@@ -1,4 +1,5 @@
-﻿using MagicVila_API.Data;
+﻿using AutoMapper;
+using MagicVila_API.Data;
 using MagicVila_API.Models;
 using MagicVila_API.Models.Dto;
 using Microsoft.AspNetCore.Http;
@@ -15,134 +16,106 @@ namespace MagicVila_API.Controllers
         private readonly ILogger<VilaController> _logger;
 
         private readonly ApplicationDbContext _db;
-        public VilaController(ILogger<VilaController> logger, ApplicationDbContext db)
+
+        private readonly IMapper mapper;
+        public VilaController(ILogger<VilaController> logger, ApplicationDbContext db,IMapper mapper)
         {
             _logger = logger;
             _db = db;
+            this.mapper = mapper;
         }
 
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public ActionResult<IEnumerable<VilaDto>> GetVilas() {
+        public async Task<ActionResult<IEnumerable<VilaDto>>> GetVilas() {
             _logger.LogInformation("Obtendo as Vilas");
-            return Ok(_db.vilas.ToList());
+
+            IEnumerable<Vila> vilaList = await _db.vilas.ToListAsync();
+
+            return Ok(mapper.Map<IEnumerable<VilaDto>>(vilaList));
         }
 
         [HttpGet("id:int", Name ="GetVila")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public ActionResult<VilaDto> GetVila(int id) {
+        public async Task< ActionResult<VilaDto>> GetVila(int id) {
             if (id == 0) {
                 _logger.LogError("Erro aos trazer uma Vila de id 0");
                 return BadRequest();
             }
-           // var villa = VilaStore.vilaList.FirstOrDefault(v => v.Id == id);
-           var villa = _db.vilas.FirstOrDefault(x => x.Id == id);
+           var villa = await _db.vilas.FirstOrDefaultAsync(x => x.Id == id);
 
             if (villa == null) { 
                 return NotFound();
             }
 
-            return Ok(villa);
+            return Ok(mapper.Map<VilaDto>(villa));
         }
         [HttpPost]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public ActionResult<VilaDto> CreateVila([FromBody] VilaDto vila) {
+        public async Task<ActionResult<VilaDto>> CreateVila([FromBody] VilaCreateDto vila) {
             if (!ModelState.IsValid) {
                 return BadRequest(ModelState);
             }
-            if (_db.vilas.FirstOrDefault(v => v.Name.ToLower() == vila.Name.ToLower()) != null) {
+            if (await _db.vilas.FirstOrDefaultAsync(v => v.Name.ToLower() == vila.Name.ToLower()) != null) {
                 ModelState.AddModelError("O nome ja existe", "Uma vila com esse nome ja existe");
             }
             if (vila == null) {
                 return BadRequest(vila);
             }
-            if (vila.Id > 0) {
-                return StatusCode(StatusCodes.Status500InternalServerError);
-            }
 
-            Vila modelo = new Vila()
-            {
-                Name = vila.Name,
-                Description = vila.Description,
-                Ocupantes = vila.Ocupantes,
-                Amenidad = vila.Amenidad,
-                ImageUrl = vila.ImageUrl,
-                Tarifa = vila.Tarifa,
-                MetrosQuadrados = vila.MetrosQuadrados,
-            };
-            _db.vilas.Add(modelo);
-            _db.SaveChanges();
+            Vila modelo = mapper.Map<Vila>(vila);
 
-            return CreatedAtRoute("GetVila",new { Id = vila.Id},vila);
+            await _db.vilas.AddAsync(modelo);
+            await _db.SaveChangesAsync();
+
+            return CreatedAtRoute("GetVila",new { Id = modelo.Id},vila);
         }
         [HttpDelete("{id:int}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult DeleteVila(int id) {
+        public async Task<IActionResult> DeleteVila(int id) {
             if (id==0) { 
                 return BadRequest();
             }
-            var vila = _db.vilas.FirstOrDefault(v => v.Id==id);
+            var vila = await _db.vilas.FirstOrDefaultAsync(v => v.Id==id);
             if (vila == null) { 
                 return NotFound();
             }
             _db.vilas.Remove(vila);
-            _db.SaveChanges();
+            await _db.SaveChangesAsync();
 
             return NoContent();
         }
 
         [HttpPut("{id:int}")]
-        public IActionResult UpdateVila(int id, [FromBody] VilaDto vila) {
+        public async Task<IActionResult> UpdateVilaAsync(int id, [FromBody] VilaUpdateDto vila) {
             if (vila == null || id != vila.Id) {
                 return BadRequest();
             }
-            //var villa = VilaStore.vilaList.FirstOrDefault(v => v.Id==id);
-            //villa.Name = vila.Name;
-            //villa.Ocupantes = vila.Ocupantes;
-            //villa.MetrosQuadrados = vila.MetrosQuadrados;
 
-            Vila modelo = new()
-            {
-                Id = vila.Id,
-                Name = vila.Name,
-                Description = vila.Description,
-                Ocupantes = vila.Ocupantes,
-                Amenidad = vila.Amenidad,
-                ImageUrl = vila.ImageUrl,
-                Tarifa = vila.Tarifa,
-                MetrosQuadrados = vila.MetrosQuadrados,
-            };
+            Vila modelo = mapper.Map<Vila>(vila);
+            
             _db.vilas.Update(modelo);
-            _db.SaveChanges();
+            await _db.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpPatch("{id:int}")]
-        public IActionResult UpdatePartialVila(int id, JsonPatchDocument<VilaDto> patch)
+        public async Task<IActionResult> UpdatePartialVila(int id, JsonPatchDocument<VilaUpdateDto> patch)
         {
             if (patch == null || id == 0)
             {
                 return BadRequest();
             }
-            var vila = _db.vilas.AsNoTracking().FirstOrDefault(v => v.Id == id);
+            var vila = await _db.vilas.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
 
-            VilaDto modeloDto = new()
-            {
-                Id = vila.Id,
-                Name = vila.Name,
-                Description = vila.Description,
-                Ocupantes = vila.Ocupantes,
-                Amenidad = vila.Amenidad,
-                ImageUrl = vila.ImageUrl,
-                Tarifa = vila.Tarifa,
-                MetrosQuadrados = vila.MetrosQuadrados,
-            };
+            VilaUpdateDto modeloDto = mapper.Map<VilaUpdateDto>(vila);
+
             if (vila == null)
             {
                 return BadRequest(ModelState);
@@ -151,20 +124,10 @@ namespace MagicVila_API.Controllers
 
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            Vila modelo = new()
-            {
-                Id = vila.Id,
-                Name = vila.Name,
-                Description = vila.Description,
-                Ocupantes = vila.Ocupantes,
-                Amenidad = vila.Amenidad,
-                ImageUrl = vila.ImageUrl,
-                Tarifa = vila.Tarifa,
-                MetrosQuadrados = vila.MetrosQuadrados,
-            };
+            Vila modelo = mapper.Map<Vila>(vila);
            
             _db.vilas.Update(modelo);
-            _db.SaveChanges();
+            await _db.SaveChangesAsync();
 
             return NoContent();
         }
